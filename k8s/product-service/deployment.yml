@@ -17,9 +17,16 @@ spec:
         - name: product-service
           image: otniel217/product-service:latest
           ports:
-            - containerPort: 8081
+            - containerPort: 8080
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: docker
             - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
               value: http://discovery-server:8761/eureka
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

@@ -301,3 +301,66 @@ With a focus on scalability, resilience, and real-time interaction, Micro Market
    ```shell
    docker compose down -v
    ```
+
+
+## Kubernetes (K3s) Deployment
+
+This repository includes manifests under `k8s/` to deploy the full stack to Kubernetes (tested on K3s). The setup exposes core services on your LAN using LoadBalancer, NodePort, and Ingress.
+
+### Quickstart
+
+1) Create namespace and apply all manifests
+
+```bash
+kubectl apply -f k8s/namespace.yml
+kubectl apply -f k8s/
+```
+
+2) Wait for rollouts and list services
+
+```bash
+kubectl -n ecommerce get deploy
+kubectl -n ecommerce get pods -o wide
+kubectl -n ecommerce get svc -o wide
+```
+
+### LAN Endpoints (examples)
+
+Replace <NODE_IP> with your K3s node IP (e.g., 192.168.2.232). Some services also have Ingress hostnames via nip.io.
+
+- API Gateway (LoadBalancer):
+    - http://<NODE_IP>:8181
+- Product Service (LoadBalancer):
+    - http://<NODE_IP>:8081
+- Inventory Service (LoadBalancer):
+    - http://<NODE_IP>:8082
+- Order Service (LoadBalancer):
+    - http://<NODE_IP>:8085
+- Keycloak (Ingress and LoadBalancer):
+    - http://keycloak.<NODE_IP>.nip.io
+    - http://<NODE_IP>:8080
+- Prometheus (NodePort):
+    - http://<NODE_IP>:30090
+- Grafana (NodePort):
+    - http://<NODE_IP>:30300 (default admin/password)
+
+### Keycloak ↔ Gateway issuer alignment
+
+The API Gateway validates JWTs against Keycloak. Ensure the issuer matches the public Keycloak URL (via Ingress):
+
+- `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://keycloak.<NODE_IP>.nip.io/realms/spring-boot-microservices-realm`
+
+In this repo, the gateway Deployment injects this via environment variable in `k8s/api-gateway/deployment.yml`. Adjust <NODE_IP> if your node IP changes.
+
+### Kafka notes
+
+- Single-node KRaft broker using Confluent `cp-kafka` with a Recreate update strategy.
+- Internal bootstrap for services: `kafka-service.ecommerce.svc.cluster.local:29092`.
+- Order events are published to `notificationTopic`; notification-service consumes them.
+
+### Troubleshooting
+
+- Can’t reach services from LAN? Check host firewall on the K3s node and open: 80 (Ingress), 8080, 8081, 8082, 8085, 8181, 30090, 30300.
+- Service has no endpoints? Confirm the Deployment exists and Pods are Ready: `kubectl -n ecommerce get deploy,pods -o wide`.
+- Keycloak DNS issues? Use the LoadBalancer port directly: `http://<NODE_IP>:8080`, or try `sslip.io`: `http://keycloak.<NODE_IP>.sslip.io`.
+- Kafka fails with port env warnings? Ensure the deployment unsets generic `PORT` variables and disables `enableServiceLinks`.
