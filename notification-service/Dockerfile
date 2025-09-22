@@ -1,5 +1,9 @@
-FROM alpine/openjdk:17-jre
+FROM eclipse-temurin:17-jdk
+
 WORKDIR /app
-COPY target/notification-service-0.0.1-SNAPSHOT.jar app.jar
-EXPOSE 8083
+
+COPY target/*.jar app.jar
+
+EXPOSE 8084  
+
 ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -1,0 +1,13 @@
+# PersistentVolumeClaim pour les données Kafka
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-data-pvc
+  namespace: ecommerce
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: local-path # Ajustez selon votre cluster

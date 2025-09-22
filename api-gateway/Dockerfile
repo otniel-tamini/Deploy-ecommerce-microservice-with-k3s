@@ -1,5 +1,11 @@
-FROM alpine/openjdk:17-jre
+# Use JDK runtime only (pas Maven ici)
+FROM eclipse-temurin:17-jdk
+
 WORKDIR /app
-COPY target/api-gateway-0.0.1-SNAPSHOT.jar app.jar
+
+# Copie du .jar compilé en dehors du conteneur
+COPY target/*.jar app.jar
+
 EXPOSE 8181
+
 ENTRYPOINT ["java", "-jar", "app.jar"]

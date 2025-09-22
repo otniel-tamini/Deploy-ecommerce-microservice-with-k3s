@@ -1,5 +1,12 @@
-FROM alpine/openjdk:17-jre
+# syntax=docker/dockerfile:1
+FROM eclipse-temurin:17-jdk
+
 WORKDIR /app
-COPY target/product-service-0.0.1-SNAPSHOT.jar app.jar
-EXPOSE 8080
+
+# Copie du JAR compilé (déjà généré en local avec mvn clean install)
+COPY target/*.jar app.jar
+
+# Port exposé (⚠️ adapte si nécessaire)
+EXPOSE 8081
+
 ENTRYPOINT ["java", "-jar", "app.jar"]

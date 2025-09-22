@@ -1,0 +1,29 @@
+# Service pour exposer Kafka en interne
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-service
+  namespace: ecommerce
+  labels:
+    app: kafka
+spec:
+  type: ClusterIP
+  ports:
+    - name: kafka-internal
+      port: 29092
+      targetPort: 29092
+      protocol: TCP
+    - name: kafka-external
+      port: 9092
+      targetPort: 9092
+      protocol: TCP
+    - name: kafka-controller
+      port: 29093
+      targetPort: 29093
+      protocol: TCP
+    - name: jmx
+      port: 9101
+      targetPort: 9101
+      protocol: TCP
+  selector:
+    app: kafka
