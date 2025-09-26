@@ -26,9 +26,30 @@ spec:
           volumeMounts:
             - name: grafana-storage
               mountPath: /var/lib/grafana
+            - name: grafana-datasource
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: grafana-dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: grafana-dashboards-json
+              mountPath: /etc/grafana/dashboards
       volumes:
         - name: grafana-storage
           emptyDir: {}
+        - name: grafana-datasource
+          configMap:
+            name: grafana-datasource
+        - name: grafana-dashboards
+          configMap:
+            name: grafana-dashboards
+            items:
+              - key: dashboards.yaml
+                path: dashboards.yaml
+        - name: grafana-dashboards-json
+          configMap:
+            name: grafana-dashboards
+            items:
+              - key: ecommerce.json
+                path: ecommerce.json
 ---
 apiVersion: v1
 kind: Service

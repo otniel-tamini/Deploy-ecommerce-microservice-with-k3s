@@ -9,5 +9,5 @@ spec:
   ports:
     - protocol: TCP
       port: 8085
-      targetPort: 8085
+      targetPort: 8081
   type: LoadBalancer

@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: ecommerce
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: 'Dashboards'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /etc/grafana/dashboards
+  ecommerce.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "gnetId": null,
+      "graphTooltip": 0,
+      "id": null,
+      "panels": [
+        {"type":"row","title":"Basics","collapsed":false,"gridPos":{"h":1,"w":24,"x":0,"y":0}},
+        {
+          "type": "stat",
+          "title": "Uptime (s)",
+          "id": 1,
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId":"A","expr":"process_uptime_seconds{instance=~\"$instance\", application=~\"$application\"}"}],
+          "fieldConfig": {"defaults": {"unit": "s", "decimals": 0}, "overrides": []},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "values": false}},
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1}
+        },
+        {
+          "type": "gauge",
+          "title": "Heap Used %",
+          "id": 2,
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId":"A","expr":"sum(jvm_memory_used_bytes{area=\"heap\",instance=~\"$instance\",application=~\"$application\"})*100/sum(jvm_memory_max_bytes{area=\"heap\",instance=~\"$instance\",application=~\"$application\"})"}],
+          "fieldConfig": {"defaults": {"unit":"percent","decimals":1}, "overrides": []},
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 1}
+        },
+        {
+          "type": "gauge",
+          "title": "Non-Heap Used %",
+          "id": 3,
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId":"A","expr":"sum(jvm_memory_used_bytes{area=\"nonheap\",instance=~\"$instance\",application=~\"$application\"})*100/sum(jvm_memory_max_bytes{area=\"nonheap\",instance=~\"$instance\",application=~\"$application\"})"}],
+          "fieldConfig": {"defaults": {"unit":"percent","decimals":1}, "overrides": []},
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1}
+        },
+        {
+          "type": "graph",
+          "title": "CPU Usage",
+          "id": 4,
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId":"A","expr":"system_cpu_usage{instance=~\"$instance\",application=~\"$application\"}","legendFormat":"System"},
+            {"refId":"B","expr":"process_cpu_usage{instance=~\"$instance\",application=~\"$application\"}","legendFormat":"Process"}
+          ],
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 5}
+        },
+        {
+          "type": "graph",
+          "title": "Threads (Live/Daemon)",
+          "id": 5,
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId":"A","expr":"jvm_threads_live_threads{instance=~\"$instance\",application=~\"$application\"}","legendFormat":"Live"},
+            {"refId":"B","expr":"jvm_threads_daemon_threads{instance=~\"$instance\",application=~\"$application\"}","legendFormat":"Daemon"}
+          ],
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 5}
+        },
+        {"type":"row","title":"HTTP","collapsed":false,"gridPos":{"h":1,"w":24,"x":0,"y":12}},
+        {
+          "type": "graph",
+          "title": "HTTP Request Rate",
+          "id": 6,
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId":"A","expr":"irate(http_server_requests_seconds_count{instance=~\"$instance\",application=~\"$application\",uri!~\".*actuator.*\"}[5m])","legendFormat":"{{method}} [{{status}}] - {{uri}}"}
+          ],
+          "gridPos": {"h": 7, "w": 12, "x": 0, "y": 13}
+        },
+        {
+          "type": "graph",
+          "title": "HTTP Response Time (s)",
+          "id": 7,
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId":"A","expr":"irate(http_server_requests_seconds_sum{instance=~\"$instance\",application=~\"$application\",exception=\"None\",uri!~\".*actuator.*\"}[5m]) / irate(http_server_requests_seconds_count{instance=~\"$instance\",application=~\"$application\",exception=\"None\",uri!~\".*actuator.*\"}[5m])","legendFormat":"{{method}} [{{status}}] - {{uri}}"}
+          ],
+          "gridPos": {"h": 7, "w": 12, "x": 12, "y": 13}
+        }
+      ],
+      "schemaVersion": 36,
+      "style": "dark",
+      "templating": {
+        "list": [
+          {"name": "instance","type": "query","label": "Instance","datasource": {"type": "prometheus", "uid": "prometheus"},
+           "definition": "label_values(process_uptime_seconds, instance)",
+           "query": {"query": "label_values(process_uptime_seconds, instance)", "refId": "StandardVariableQuery"},
+           "includeAll": true, "refresh": 1, "sort": 1, "multi": false},
+          {"name": "application","type": "query","label": "Application","datasource": {"type": "prometheus", "uid": "prometheus"},
+           "definition": "label_values(process_uptime_seconds{instance=~\"$instance\"}, application)",
+           "query": {"query": "label_values(process_uptime_seconds{instance=~\"$instance\"}, application)", "refId": "StandardVariableQuery"},
+           "includeAll": true, "refresh": 1, "sort": 1, "multi": false}
+        ]
+      },
+      "time": {"from": "now-30m", "to": "now"},
+      "timezone": "",
+      "title": "Spring Boot Metrics",
+      "uid": "spring-boot-metrics"
+    }
