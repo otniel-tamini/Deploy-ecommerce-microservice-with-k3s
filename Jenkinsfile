@@ -11,6 +11,9 @@ pipeline {
         KUBECONFIG = credentials('kubeconfig')
         KUBE_NAMESPACE = 'ecommerce'
         
+        // Slack configuration
+        SLACK_CHANNEL = '#deployments'
+        
         // Application configuration
         DOCKER_REGISTRY = 'docker.io'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
@@ -36,6 +39,19 @@ pipeline {
                 echo "🚀 Starting CD Pipeline for Build #${env.BUILD_NUMBER}"
                 echo "📦 Services to deploy: ${env.SERVICES}"
                 echo "🏷️  Image tag: ${env.IMAGE_TAG}"
+                
+                // Send start notification to Slack
+                slackSend(
+                    channel: env.SLACK_CHANNEL,
+                    color: '#439FE0',
+                    message: """
+                        🚀 *Déploiement démarré* - ${env.JOB_NAME}
+                        *Branche:* ${env.BRANCH_NAME}
+                        *Build:* #${env.BUILD_NUMBER}
+                        *Services:* ${env.SERVICES.replace(',', ', ')}
+                        *Lien:* ${env.BUILD_URL}
+                    """.stripIndent()
+                )
                 
                 // Clean workspace
                 cleanWs()
@@ -101,6 +117,18 @@ pipeline {
             post {
                 success {
                     echo "✅ Staging deployment successful"
+                    slackSend(
+                        channel: env.SLACK_CHANNEL,
+                        color: 'good',
+                        message: """
+                            ✅ *Déploiement Staging réussi* - ${env.JOB_NAME}
+                            *Branche:* ${env.BRANCH_NAME}
+                            *Build:* #${env.BUILD_NUMBER}
+                            *Environnement:* Staging
+                            *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
+                            *Lien:* ${env.BUILD_URL}
+                        """.stripIndent()
+                    )
                     // Run smoke tests
                     sh '''
                         echo "🧪 Running staging smoke tests..."
@@ -110,6 +138,18 @@ pipeline {
                 }
                 failure {
                     echo "❌ Staging deployment failed"
+                    slackSend(
+                        channel: env.SLACK_CHANNEL,
+                        color: 'danger',
+                        message: """
+                            ❌ *Déploiement Staging échoué* - ${env.JOB_NAME}
+                            *Branche:* ${env.BRANCH_NAME}
+                            *Build:* #${env.BUILD_NUMBER}
+                            *Environnement:* Staging
+                            *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
+                            *Lien:* ${env.BUILD_URL}
+                        """.stripIndent()
+                    )
                 }
             }
         }
@@ -152,6 +192,21 @@ pipeline {
             post {
                 success {
                     echo "🎉 Production deployment successful!"
+                    slackSend(
+                        channel: env.SLACK_CHANNEL,
+                        color: 'good',
+                        message: """
+                            🎉 *Déploiement Production réussi* - ${env.JOB_NAME}
+                            *Branche:* ${env.BRANCH_NAME}
+                            *Build:* #${env.BUILD_NUMBER}
+                            *Environnement:* Production
+                            *Approuvé par:* ${env.APPROVER ?: 'System'}
+                            *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
+                            *Lien:* ${env.BUILD_URL}
+                            
+                            🚀 *Services déployés:* ${env.SERVICES.replace(',', ', ')}
+                        """.stripIndent()
+                    )
                     
                     // Run production health checks
                     sh '''
@@ -162,6 +217,20 @@ pipeline {
                 }
                 failure {
                     echo "❌ Production deployment failed"
+                    slackSend(
+                        channel: env.SLACK_CHANNEL,
+                        color: 'danger',
+                        message: """
+                            ❌ *Déploiement Production échoué* - ${env.JOB_NAME}
+                            *Branche:* ${env.BRANCH_NAME}
+                            *Build:* #${env.BUILD_NUMBER}
+                            *Environnement:* Production
+                            *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
+                            *Lien:* ${env.BUILD_URL}
+                            
+                            🔄 *Action:* Rollback en cours...
+                        """.stripIndent()
+                    )
                     
                     // Rollback on failure
                     script {
@@ -240,36 +309,56 @@ pipeline {
         success {
             echo "🎉 CD Pipeline completed successfully!"
             
-            // Send success notification
-            script {
-                sendNotification(
-                    status: 'SUCCESS',
-                    message: "✅ Deployment successful for build #${env.BUILD_NUMBER}"
-                )
-            }
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                color: 'good',
+                message: """
+                    ✅ *Pipeline CD terminé avec succès* - ${env.JOB_NAME}
+                    *Branche:* ${env.BRANCH_NAME}
+                    *Build:* #${env.BUILD_NUMBER}
+                    *Environnement:* ${env.DEPLOY_ENV ?: 'Multiple'}
+                    *Durée totale:* ${currentBuild.durationString.replace(' and counting', '')}
+                    *Lien:* ${env.BUILD_URL}
+                    
+                    🎯 *Services déployés:* ${env.SERVICES.replace(',', ', ')}
+                """.stripIndent()
+            )
         }
         
         failure {
             echo "❌ CD Pipeline failed!"
             
-            // Send failure notification
-            script {
-                sendNotification(
-                    status: 'FAILURE',
-                    message: "❌ Deployment failed for build #${env.BUILD_NUMBER}"
-                )
-            }
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                color: 'danger',
+                message: """
+                    ❌ *Pipeline CD échoué* - ${env.JOB_NAME}
+                    *Branche:* ${env.BRANCH_NAME}
+                    *Build:* #${env.BUILD_NUMBER}
+                    *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
+                    *Lien:* ${env.BUILD_URL}
+                    
+                    🔍 *Action requise:* Vérifier les logs et corriger les erreurs
+                """.stripIndent()
+            )
         }
         
         unstable {
             echo "⚠️ CD Pipeline completed with warnings"
             
-            script {
-                sendNotification(
-                    status: 'UNSTABLE',
-                    message: "⚠️ Deployment completed with warnings for build #${env.BUILD_NUMBER}"
-                )
-            }
+            slackSend(
+                channel: env.SLACK_CHANNEL,
+                color: 'warning',
+                message: """
+                    ⚠️ *Pipeline CD instable* - ${env.JOB_NAME}
+                    *Branche:* ${env.BRANCH_NAME}
+                    *Build:* #${env.BUILD_NUMBER}
+                    *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
+                    *Lien:* ${env.BUILD_URL}
+                    
+                    📊 *Statut:* Terminé avec des avertissements
+                """.stripIndent()
+            )
         }
     }
 }
@@ -318,30 +407,19 @@ def rollbackDeployment() {
     echo "✅ Rollback completed"
 }
 
-// Helper function to send notifications
+// Helper function to send notifications (deprecated - using slackSend directly now)
+// Kept for backward compatibility if needed for other notification types
 def sendNotification(Map params) {
     def status = params.status
     def message = params.message
+    def color = status == 'SUCCESS' ? 'good' : status == 'FAILURE' ? 'danger' : 'warning'
     
     echo "📢 Sending notification: ${message}"
     
-    // Slack notification (configure as needed)
-    // slackSend(
-    //     channel: '#deployments',
-    //     color: status == 'SUCCESS' ? 'good' : 'danger',
-    //     message: message
-    // )
-    
-    // Email notification (configure as needed)
-    // emailext(
-    //     subject: "[Jenkins] ${status}: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
-    //     body: message,
-    //     to: 'team@company.com'
-    // )
-    
-    // Teams notification (configure as needed)
-    // office365ConnectorSend(
-    //     webhookUrl: 'YOUR_TEAMS_WEBHOOK_URL',
-    //     message: message
-    // )
+    // Use slackSend for Slack notifications
+    slackSend(
+        channel: env.SLACK_CHANNEL,
+        color: color,
+        message: message
+    )
 }

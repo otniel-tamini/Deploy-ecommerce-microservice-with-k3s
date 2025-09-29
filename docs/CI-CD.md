@@ -19,7 +19,27 @@ This document provides comprehensive guidance for the CI/CD pipeline implementat
                        └──────────────┘           └─────────────┘
 ```
 
-## 📋 GitHub Actions CI Pipeline
+## � Slack Integration
+
+The pipeline includes comprehensive Slack notifications for real-time deployment updates:
+
+### Features
+- **Pipeline status updates**: Start, success, failure notifications
+- **Deployment tracking**: Staging and production deployment status
+- **Rich formatting**: Emojis, colors, and detailed build information
+- **Interactive elements**: Direct links to build logs and Jenkins
+
+### Configuration
+See [Slack Integration Guide](./Slack-Integration.md) for detailed setup instructions.
+
+### Notification Types
+- 🚀 **Pipeline Start**: When deployment begins
+- ✅ **Success**: Successful deployments and tests
+- ❌ **Failure**: Failed deployments with rollback information
+- ⚠️ **Warning**: Completed with issues
+- 🎉 **Production**: Special notifications for production deployments
+
+## �📋 GitHub Actions CI Pipeline
 
 ### Required Secrets
 
