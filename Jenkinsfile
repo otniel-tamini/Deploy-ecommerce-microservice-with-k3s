@@ -139,6 +139,23 @@ pipeline {
             
             steps {
                 echo "🚧 Deploying to Staging environment..."
+                echo "📁 Available k8s services:"
+                
+                // List available k8s manifests
+                sh '''
+                    echo "📋 Checking available k8s manifests..."
+                    ls -la k8s/ | grep ^d || echo "⚠️ No service directories found"
+                    
+                    echo "🔍 Services to deploy: $SERVICES"
+                    for service in $(echo $SERVICES | tr ',' ' '); do
+                        if [ -d "k8s/$service" ]; then
+                            echo "✅ $service: manifests found"
+                            ls k8s/$service/ | head -3
+                        else
+                            echo "❌ $service: no manifests found"
+                        fi
+                    done
+                '''
                 
                 script {
                     deployToKubernetes('staging')
@@ -210,6 +227,20 @@ pipeline {
                         }
                         
                         echo "🎯 Production deployment approved by: ${env.APPROVER}"
+                        
+                        echo "📋 Preparing production deployment..."
+                        sh '''
+                            echo "🔍 Final check - Services to deploy: $SERVICES"
+                            for service in $(echo $SERVICES | tr ',' ' '); do
+                                if [ -d "k8s/$service" ]; then
+                                    echo "✅ $service: ready for production"
+                                else
+                                    echo "❌ $service: missing manifests"
+                                    exit 1
+                                fi
+                            done
+                        '''
+                        
                         deployToKubernetes('production')
                         
                     } catch (Exception e) {
@@ -436,53 +467,80 @@ def deployToKubernetes(environment) {
         echo "✅ Namespace ${env.KUBE_NAMESPACE} ready"
     """
     
-    // Deploy each service
+    // Create temporary k8s directory for this environment
+    sh """
+        echo "� Preparing k8s manifests for ${environment}..."
+        rm -rf k8s-${environment}
+        cp -r k8s k8s-${environment}
+    """
+    
+    // Update all manifests for the target environment
     services.each { service ->
-        echo "🚀 Deploying ${service}..."
+        echo "🔧 Updating manifests for ${service}..."
         
         sh """
-            # Check if deployment exists
-            if kubectl get deployment ${service} -n ${env.KUBE_NAMESPACE} >/dev/null 2>&1; then
-                echo "📝 Updating existing deployment for ${service}"
-                kubectl set image deployment/${service} ${service}=${env.DOCKER_USERNAME}/${service}:${env.IMAGE_TAG} -n ${env.KUBE_NAMESPACE}
-            else
-                echo "🆕 Creating new deployment for ${service}"
-                # Apply from k8s manifests
-                if [ -d "k8s/${service}" ]; then
-                    echo "📋 Using k8s manifests for ${service}"
-                    
-                    # Create temporary manifest with correct namespace and image
-                    cp k8s/${service}/deployment.yml k8s/${service}/deployment-${environment}.yml
-                    
-                    # Update namespace and image in deployment manifest
-                    sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|' k8s/${service}/deployment-${environment}.yml
-                    sed -i 's|image: .*/${service}:.*|image: ${env.DOCKER_USERNAME}/${service}:${env.IMAGE_TAG}|' k8s/${service}/deployment-${environment}.yml
-                    
-                    # Apply deployment
-                    kubectl apply -f k8s/${service}/deployment-${environment}.yml
-                    
-                    # Apply service if exists (update namespace)
-                    if [ -f "k8s/${service}/service.yml" ]; then
-                        cp k8s/${service}/service.yml k8s/${service}/service-${environment}.yml
-                        sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|' k8s/${service}/service-${environment}.yml
-                        kubectl apply -f k8s/${service}/service-${environment}.yml
-                        rm -f k8s/${service}/service-${environment}.yml
-                    fi
-                    
-                    # Cleanup temp file
-                    rm -f k8s/${service}/deployment-${environment}.yml
-                else
-                    echo "⚠️ No k8s manifests found for ${service}, creating minimal deployment"
-                    # Create a minimal deployment
-                    kubectl create deployment ${service} --image=${env.DOCKER_USERNAME}/${service}:${env.IMAGE_TAG} -n ${env.KUBE_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                    # Expose as service
-                    kubectl expose deployment ${service} --port=8080 --target-port=8080 -n ${env.KUBE_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+            if [ -d "k8s-${environment}/${service}" ]; then
+                echo "� Updating ${service} deployment manifest..."
+                
+                # Update namespace in deployment
+                if [ -f "k8s-${environment}/${service}/deployment.yml" ]; then
+                    sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g' k8s-${environment}/${service}/deployment.yml
+                    sed -i 's|image: otniel217/${service}:latest|image: ${env.DOCKER_USERNAME}/${service}:${env.IMAGE_TAG}|g' k8s-${environment}/${service}/deployment.yml
+                    echo "✅ Updated deployment.yml for ${service}"
                 fi
+                
+                # Update namespace in service
+                if [ -f "k8s-${environment}/${service}/service.yml" ]; then
+                    sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g' k8s-${environment}/${service}/service.yml
+                    echo "✅ Updated service.yml for ${service}"
+                fi
+                
+                # Update namespace in any other manifests
+                find k8s-${environment}/${service}/ -name "*.yml" -o -name "*.yaml" | xargs sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g' || true
+            else
+                echo "⚠️ No k8s manifests found for ${service}"
             fi
-            
-            echo "✅ ${service} deployment completed"
         """
     }
+    
+    // Apply all manifests
+    echo "🚀 Applying all k8s manifests to ${environment}..."
+    services.each { service ->
+        sh """
+            if [ -d "k8s-${environment}/${service}" ]; then
+                echo "📦 Deploying ${service}..."
+                kubectl apply -f k8s-${environment}/${service}/ || echo "⚠️ Failed to apply some manifests for ${service}"
+                echo "✅ ${service} manifests applied"
+            fi
+        """
+    }
+    
+    // Apply additional manifests if staging (like databases, monitoring, etc.)
+    if (environment == 'staging') {
+        sh """
+            echo "🗄️ Applying additional staging manifests..."
+            
+            # Apply MySQL if exists
+            if [ -d "k8s-${environment}/mysql" ]; then
+                sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g' k8s-${environment}/mysql/*.yml
+                kubectl apply -f k8s-${environment}/mysql/ || echo "⚠️ MySQL manifests not applied"
+            fi
+            
+            # Apply MongoDB if exists  
+            if [ -d "k8s-${environment}/mongo" ]; then
+                sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g' k8s-${environment}/mongo/*.yml
+                kubectl apply -f k8s-${environment}/mongo/ || echo "⚠️ MongoDB manifests not applied"
+            fi
+            
+            echo "✅ Additional manifests applied"
+        """
+    }
+    
+    // Cleanup temporary directory
+    sh """
+        echo "🧹 Cleaning up temporary manifests..."
+        rm -rf k8s-${environment}
+    """
     
     echo "✅ All services deployed to ${environment}"
 }
