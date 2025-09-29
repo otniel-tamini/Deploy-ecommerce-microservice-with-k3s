@@ -182,7 +182,7 @@ pipeline {
                         sh """
                             echo "🔍 Checking ${service} health..."
                             kubectl get pods -l app=${service} -n ${KUBE_NAMESPACE}
-                            kubectl get svc -l app=${service} -n ${KUBE_NAMESPACE}
+                            kubectl get svc ${service} -n ${KUBE_NAMESPACE} || echo "⚠️ Service ${service} not found"
                         """
                     }
                 }
