@@ -46,6 +46,7 @@ pipeline {
                 // Verify kubectl connectivity
                 sh '''
                     echo "🔧 Verifying Kubernetes connectivity..."
+                    kubectl version --client
                     kubectl cluster-info
                     kubectl get nodes
                 '''
