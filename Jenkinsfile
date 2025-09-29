@@ -614,47 +614,47 @@ def deployViaSSH(environment) {
             scp k8s-deployment-${environment}-${env.BUILD_NUMBER}.tar.gz \${K8S_MASTER}:\${DEPLOY_DIR}.tar.gz
             
             # Execute deployment on K8s master
-            ssh \${K8S_MASTER} '
-                echo "🔧 Extracting deployment package..."
-                mkdir -p '${DEPLOY_DIR}'
-                cd '${DEPLOY_DIR}'
-                tar -xzf '${DEPLOY_DIR}'.tar.gz
+            ssh \${K8S_MASTER} "
+                echo '🔧 Extracting deployment package...'
+                mkdir -p ${DEPLOY_DIR}
+                cd ${DEPLOY_DIR}
+                tar -xzf ${DEPLOY_DIR}.tar.gz
                 
-                echo "📋 Preparing manifests for ${environment}..."
+                echo '📋 Preparing manifests for ${environment}...'
                 cp -r k8s k8s-${environment}
                 
                 # Create namespace
                 kubectl create namespace ${env.KUBE_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                 
                 # Update manifests
-                for service in $(echo "${env.SERVICES}" | tr "," " "); do
-                    if [ -d "k8s-${environment}/\$service" ]; then
-                        echo "🔧 Updating manifests for \$service..."
-                        find k8s-${environment}/\$service/ -name "*.yml" -o -name "*.yaml" | xargs sed -i "s|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g"
-                        find k8s-${environment}/\$service/ -name "*.yml" -o -name "*.yaml" | xargs sed -i "s|image: otniel217/\$service:latest|image: ${env.DOCKER_USERNAME}/\$service:${env.IMAGE_TAG}|g"
+                for service in \\\$(echo '${env.SERVICES}' | tr ',' ' '); do
+                    if [ -d 'k8s-${environment}/\\\$service' ]; then
+                        echo '🔧 Updating manifests for \\\$service...'
+                        find k8s-${environment}/\\\$service/ -name '*.yml' -o -name '*.yaml' | xargs sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g'
+                        find k8s-${environment}/\\\$service/ -name '*.yml' -o -name '*.yaml' | xargs sed -i 's|image: otniel217/\\\$service:latest|image: ${env.DOCKER_USERNAME}/\\\$service:${env.IMAGE_TAG}|g'
                         
-                        echo "📦 Deploying \$service..."
-                        kubectl apply -f k8s-${environment}/\$service/ || echo "⚠️ Failed to apply some manifests for \$service"
+                        echo '📦 Deploying \\\$service...'
+                        kubectl apply -f k8s-${environment}/\\\$service/ || echo '⚠️ Failed to apply some manifests for \\\$service'
                     fi
                 done
                 
                 # Apply additional manifests for staging
-                if [ "${environment}" = "staging" ]; then
-                    echo "🗄️ Applying additional staging manifests..."
+                if [ '${environment}' = 'staging' ]; then
+                    echo '🗄️ Applying additional staging manifests...'
                     for component in mysql mongo; do
-                        if [ -d "k8s-${environment}/\$component" ]; then
-                            find k8s-${environment}/\$component/ -name "*.yml" -o -name "*.yaml" | xargs sed -i "s|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g"
-                            kubectl apply -f k8s-${environment}/\$component/ || echo "⚠️ \$component manifests not applied"
+                        if [ -d 'k8s-${environment}/\\\$component' ]; then
+                            find k8s-${environment}/\\\$component/ -name '*.yml' -o -name '*.yaml' | xargs sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g'
+                            kubectl apply -f k8s-${environment}/\\\$component/ || echo '⚠️ \\\$component manifests not applied'
                         fi
                     done
                 fi
                 
-                echo "🧹 Cleaning up..."
+                echo '🧹 Cleaning up...'
                 cd /tmp
-                rm -rf '${DEPLOY_DIR}' '${DEPLOY_DIR}'.tar.gz
+                rm -rf ${DEPLOY_DIR} ${DEPLOY_DIR}.tar.gz
                 
-                echo "✅ Deployment completed via SSH"
-            '
+                echo '✅ Deployment completed via SSH'
+            "
         """
     }
     
