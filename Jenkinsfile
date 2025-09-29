@@ -433,6 +433,7 @@ def deployToKubernetes(environment) {
     // Create namespace if it doesn't exist
     sh """
         kubectl create namespace ${env.KUBE_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+        echo "✅ Namespace ${env.KUBE_NAMESPACE} ready"
     """
     
     // Deploy each service
@@ -440,12 +441,46 @@ def deployToKubernetes(environment) {
         echo "🚀 Deploying ${service}..."
         
         sh """
-            # Update image in deployment
-            kubectl set image deployment/${service} ${service}=${env.DOCKER_USERNAME}/${service}:${env.IMAGE_TAG} -n ${env.KUBE_NAMESPACE}
+            # Check if deployment exists
+            if kubectl get deployment ${service} -n ${env.KUBE_NAMESPACE} >/dev/null 2>&1; then
+                echo "📝 Updating existing deployment for ${service}"
+                kubectl set image deployment/${service} ${service}=${env.DOCKER_USERNAME}/${service}:${env.IMAGE_TAG} -n ${env.KUBE_NAMESPACE}
+            else
+                echo "🆕 Creating new deployment for ${service}"
+                # Apply from k8s manifests
+                if [ -d "k8s/${service}" ]; then
+                    echo "📋 Using k8s manifests for ${service}"
+                    
+                    # Create temporary manifest with correct namespace and image
+                    cp k8s/${service}/deployment.yml k8s/${service}/deployment-${environment}.yml
+                    
+                    # Update namespace and image in deployment manifest
+                    sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|' k8s/${service}/deployment-${environment}.yml
+                    sed -i 's|image: .*/${service}:.*|image: ${env.DOCKER_USERNAME}/${service}:${env.IMAGE_TAG}|' k8s/${service}/deployment-${environment}.yml
+                    
+                    # Apply deployment
+                    kubectl apply -f k8s/${service}/deployment-${environment}.yml
+                    
+                    # Apply service if exists (update namespace)
+                    if [ -f "k8s/${service}/service.yml" ]; then
+                        cp k8s/${service}/service.yml k8s/${service}/service-${environment}.yml
+                        sed -i 's|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|' k8s/${service}/service-${environment}.yml
+                        kubectl apply -f k8s/${service}/service-${environment}.yml
+                        rm -f k8s/${service}/service-${environment}.yml
+                    fi
+                    
+                    # Cleanup temp file
+                    rm -f k8s/${service}/deployment-${environment}.yml
+                else
+                    echo "⚠️ No k8s manifests found for ${service}, creating minimal deployment"
+                    # Create a minimal deployment
+                    kubectl create deployment ${service} --image=${env.DOCKER_USERNAME}/${service}:${env.IMAGE_TAG} -n ${env.KUBE_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                    # Expose as service
+                    kubectl expose deployment ${service} --port=8080 --target-port=8080 -n ${env.KUBE_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                fi
+            fi
             
-            # Alternative: Apply from k8s manifests with updated image
-            # sed -i 's|image: .*/${service}:.*|image: ${env.DOCKER_USERNAME}/${service}:${env.IMAGE_TAG}|' k8s/${service}/deployment.yml
-            # kubectl apply -f k8s/${service}/ -n ${env.KUBE_NAMESPACE}
+            echo "✅ ${service} deployment completed"
         """
     }
     
