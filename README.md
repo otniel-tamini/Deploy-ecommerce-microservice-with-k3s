@@ -306,10 +306,12 @@ This project includes a complete CI/CD pipeline for automated testing and deploy
 - **Quality Gates**: Comprehensive test validation
 
 ### 🎯 **Continuous Deployment (Jenkins)**
-- **Staging Deployment**: Automatic deployment to staging environment
-- **Production Deployment**: Manual approval required for production
+- **Staging Deployment**: Automatic deployment to staging environment (develop branch)
+- **Production Deployment**: Manual approval required for production (main branch)
 - **Health Monitoring**: Automated health checks and monitoring
 - **Rollback**: Automatic rollback on deployment failures
+
+**🧪 Testing staging deployment from develop branch...**
 
 For detailed setup instructions, see [CI/CD Documentation](docs/CI-CD.md).
 
