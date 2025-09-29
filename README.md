@@ -295,6 +295,26 @@ With a focus on scalability, resilience, and real-time interaction, Micro Market
     ![Dashboard-5](docs/images/outputs/grafana_dashboard_pg5.png)
 
 
+## CI/CD Pipeline
+
+This project includes a complete CI/CD pipeline for automated testing and deployment:
+
+### 🚀 **Continuous Integration (GitHub Actions)**
+- **Maven Build**: Automated compilation and testing
+- **Docker Build**: Multi-arch image creation (amd64/arm64)
+- **Security Scanning**: Trivy vulnerability assessment
+- **Quality Gates**: Comprehensive test validation
+
+### 🎯 **Continuous Deployment (Jenkins)**
+- **Staging Deployment**: Automatic deployment to staging environment
+- **Production Deployment**: Manual approval required for production
+- **Health Monitoring**: Automated health checks and monitoring
+- **Rollback**: Automatic rollback on deployment failures
+
+For detailed setup instructions, see [CI/CD Documentation](docs/CI-CD.md).
+
+---
+
 ## Environment Cleanup
 
 - To completely stop and remove the containers and other resources (network, volume, etc.), run the following command:
