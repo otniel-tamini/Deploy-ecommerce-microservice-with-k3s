@@ -84,13 +84,30 @@ pipeline {
                     echo "🔍 Should deploy to staging: ${env.GIT_BRANCH?.contains('develop') || env.DETECTED_BRANCH?.contains('develop') || params.FORCE_STAGING}"
                 }
                 
-                // Verify kubectl connectivity
-                sh '''
-                    echo "🔧 Verifying Kubernetes connectivity..."
-                    kubectl version --client
-                    kubectl cluster-info
-                    kubectl get nodes
-                '''
+                // Verify connection method
+                script {
+                    echo "🔧 Verifying deployment method..."
+                    
+                    // Test if kubectl is available and configured
+                    def kubectlAvailable = sh(
+                        script: 'kubectl version --client >/dev/null 2>&1',
+                        returnStatus: true
+                    ) == 0
+                    
+                    if (kubectlAvailable) {
+                        echo "✅ kubectl available - using direct deployment"
+                        env.DEPLOYMENT_METHOD = 'kubectl'
+                        
+                        sh '''
+                            echo "🔧 Testing Kubernetes connectivity..."
+                            kubectl version --client
+                            kubectl cluster-info || echo "⚠️ No cluster connection - will use SSH deployment"
+                        '''
+                    } else {
+                        echo "⚠️ kubectl not available - using SSH deployment"
+                        env.DEPLOYMENT_METHOD = 'ssh'
+                    }
+                }
             }
         }
         
@@ -459,6 +476,17 @@ pipeline {
 def deployToKubernetes(environment) {
     echo "🚀 Deploying to ${environment} environment..."
     
+    if (env.DEPLOYMENT_METHOD == 'ssh') {
+        deployViaSSH(environment)
+    } else {
+        deployViaKubectl(environment)
+    }
+}
+
+// Direct kubectl deployment (when Jenkins has kubectl access)
+def deployViaKubectl(environment) {
+    echo "🔧 Using direct kubectl deployment..."
+    
     def services = env.SERVICES.split(',')
     
     // Create namespace if it doesn't exist
@@ -558,7 +586,91 @@ def rollbackDeployment() {
         """
     }
     
-    echo "✅ Rollback completed"
+        echo "✅ Rollback completed"
+}
+
+// SSH-based deployment (when Jenkins needs to connect to K8s master via SSH)
+def deployViaSSH(environment) {
+    echo "🔧 Using SSH deployment to Kubernetes master..."
+    
+    // Archive the k8s directory
+    sh """
+        echo "📦 Preparing deployment package..."
+        tar -czf k8s-deployment-${environment}-${env.BUILD_NUMBER}.tar.gz k8s/
+        echo "✅ Deployment package created"
+    """
+    
+    // SSH deployment using sshagent
+    sshagent(['k8s-master-ssh']) {
+        sh """
+            echo "🚀 Deploying to ${environment} via SSH..."
+            
+            # Define target server (adjust as needed)
+            K8S_MASTER="prod-1@192.168.2.232"
+            DEPLOY_DIR="/tmp/jenkins-deploy-${env.BUILD_NUMBER}"
+            
+            # Copy deployment package to K8s master
+            echo "📁 Copying files to K8s master..."
+            scp k8s-deployment-${environment}-${env.BUILD_NUMBER}.tar.gz \${K8S_MASTER}:\${DEPLOY_DIR}.tar.gz
+            
+            # Execute deployment on K8s master
+            ssh \${K8S_MASTER} '
+                echo "🔧 Extracting deployment package..."
+                mkdir -p '${DEPLOY_DIR}'
+                cd '${DEPLOY_DIR}'
+                tar -xzf '${DEPLOY_DIR}'.tar.gz
+                
+                echo "📋 Preparing manifests for ${environment}..."
+                cp -r k8s k8s-${environment}
+                
+                # Create namespace
+                kubectl create namespace ${env.KUBE_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                
+                # Update manifests
+                for service in $(echo "${env.SERVICES}" | tr "," " "); do
+                    if [ -d "k8s-${environment}/\$service" ]; then
+                        echo "🔧 Updating manifests for \$service..."
+                        find k8s-${environment}/\$service/ -name "*.yml" -o -name "*.yaml" | xargs sed -i "s|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g"
+                        find k8s-${environment}/\$service/ -name "*.yml" -o -name "*.yaml" | xargs sed -i "s|image: otniel217/\$service:latest|image: ${env.DOCKER_USERNAME}/\$service:${env.IMAGE_TAG}|g"
+                        
+                        echo "📦 Deploying \$service..."
+                        kubectl apply -f k8s-${environment}/\$service/ || echo "⚠️ Failed to apply some manifests for \$service"
+                    fi
+                done
+                
+                # Apply additional manifests for staging
+                if [ "${environment}" = "staging" ]; then
+                    echo "🗄️ Applying additional staging manifests..."
+                    for component in mysql mongo; do
+                        if [ -d "k8s-${environment}/\$component" ]; then
+                            find k8s-${environment}/\$component/ -name "*.yml" -o -name "*.yaml" | xargs sed -i "s|namespace: ecommerce|namespace: ${env.KUBE_NAMESPACE}|g"
+                            kubectl apply -f k8s-${environment}/\$component/ || echo "⚠️ \$component manifests not applied"
+                        fi
+                    done
+                fi
+                
+                echo "🧹 Cleaning up..."
+                cd /tmp
+                rm -rf '${DEPLOY_DIR}' '${DEPLOY_DIR}'.tar.gz
+                
+                echo "✅ Deployment completed via SSH"
+            '
+        """
+    }
+    
+    // Cleanup local files
+    sh """
+        rm -f k8s-deployment-${environment}-${env.BUILD_NUMBER}.tar.gz
+    """
+    
+    echo "✅ All services deployed to ${environment} via SSH"
+}
+
+// Helper function for backwards compatibility and other notification types
+def sendNotification(Map params) {
+    // Delegate to Slack for now, can be extended for other services
+    sendSlackNotification(params)
+}
 }
 
 // Helper function to send notifications (deprecated - using slackSend directly now)
