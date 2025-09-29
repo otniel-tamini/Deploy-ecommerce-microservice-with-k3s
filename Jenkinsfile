@@ -1,6 +1,19 @@
 pipeline {
     agent any
     
+    parameters {
+        choice(
+            name: 'DEPLOY_ENVIRONMENT',
+            choices: ['auto', 'staging', 'production', 'skip'],
+            description: 'Environnement de déploiement (auto détecte selon la branche)'
+        )
+        booleanParam(
+            name: 'FORCE_STAGING',
+            defaultValue: false,
+            description: 'Forcer le déploiement staging même sur main'
+        )
+    }
+    
     environment {
         // Docker Hub credentials
         DOCKER_HUB_CREDENTIALS = credentials('docker-hub-credentials')
@@ -39,6 +52,8 @@ pipeline {
                 echo "🚀 Starting CD Pipeline for Build #${env.BUILD_NUMBER}"
                 echo "📦 Services to deploy: ${env.SERVICES}"
                 echo "🏷️  Image tag: ${env.IMAGE_TAG}"
+                echo "🌿 Git branch: ${env.GIT_BRANCH}"
+                echo "📍 Branch name: ${env.BRANCH_NAME}"
                 
                 // Send start notification to Slack
                 slackSend(
@@ -46,7 +61,7 @@ pipeline {
                     color: '#439FE0',
                     message: """
                         🚀 *Déploiement démarré* - ${env.JOB_NAME}
-                        *Branche:* ${env.BRANCH_NAME}
+                        *Branche:* ${env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'unknown'}
                         *Build:* #${env.BUILD_NUMBER}
                         *Services:* ${env.SERVICES.replace(',', ', ')}
                         *Lien:* ${env.BUILD_URL}
@@ -58,6 +73,16 @@ pipeline {
                 
                 // Checkout source code
                 checkout scm
+                
+                // Detect branch information
+                script {
+                    env.DETECTED_BRANCH = sh(
+                        script: 'git rev-parse --abbrev-ref HEAD || echo "unknown"',
+                        returnStdout: true
+                    ).trim()
+                    echo "🔍 Detected branch: ${env.DETECTED_BRANCH}"
+                    echo "🔍 Should deploy to staging: ${env.GIT_BRANCH?.contains('develop') || env.DETECTED_BRANCH?.contains('develop') || params.FORCE_STAGING}"
+                }
                 
                 // Verify kubectl connectivity
                 sh '''
@@ -96,6 +121,14 @@ pipeline {
                 anyOf {
                     branch 'develop'
                     branch 'staging'
+                    expression { 
+                        return env.GIT_BRANCH == 'origin/develop' || 
+                               env.GIT_BRANCH == 'develop' ||
+                               env.GIT_BRANCH == 'origin/staging' ||
+                               env.GIT_BRANCH == 'staging' ||
+                               params.DEPLOY_ENVIRONMENT == 'staging' ||
+                               params.FORCE_STAGING == true
+                    }
                 }
             }
             
@@ -122,7 +155,7 @@ pipeline {
                         color: 'good',
                         message: """
                             ✅ *Déploiement Staging réussi* - ${env.JOB_NAME}
-                            *Branche:* ${env.BRANCH_NAME}
+                            *Branche:* ${env.GIT_BRANCH ?: env.DETECTED_BRANCH ?: 'unknown'}
                             *Build:* #${env.BUILD_NUMBER}
                             *Environnement:* Staging
                             *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
@@ -143,7 +176,7 @@ pipeline {
                         color: 'danger',
                         message: """
                             ❌ *Déploiement Staging échoué* - ${env.JOB_NAME}
-                            *Branche:* ${env.BRANCH_NAME}
+                            *Branche:* ${env.GIT_BRANCH ?: env.DETECTED_BRANCH ?: 'unknown'}
                             *Build:* #${env.BUILD_NUMBER}
                             *Environnement:* Staging
                             *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
@@ -197,7 +230,7 @@ pipeline {
                         color: 'good',
                         message: """
                             🎉 *Déploiement Production réussi* - ${env.JOB_NAME}
-                            *Branche:* ${env.BRANCH_NAME}
+                            *Branche:* ${env.GIT_BRANCH ?: env.DETECTED_BRANCH ?: 'unknown'}
                             *Build:* #${env.BUILD_NUMBER}
                             *Environnement:* Production
                             *Approuvé par:* ${env.APPROVER ?: 'System'}
@@ -222,7 +255,7 @@ pipeline {
                         color: 'danger',
                         message: """
                             ❌ *Déploiement Production échoué* - ${env.JOB_NAME}
-                            *Branche:* ${env.BRANCH_NAME}
+                            *Branche:* ${env.GIT_BRANCH ?: env.DETECTED_BRANCH ?: 'unknown'}
                             *Build:* #${env.BUILD_NUMBER}
                             *Environnement:* Production
                             *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
@@ -342,7 +375,7 @@ pipeline {
                 color: 'good',
                 message: """
                     ✅ *Pipeline CD terminé avec succès* - ${env.JOB_NAME}
-                    *Branche:* ${env.BRANCH_NAME}
+                    *Branche:* ${env.GIT_BRANCH ?: env.DETECTED_BRANCH ?: 'unknown'}
                     *Build:* #${env.BUILD_NUMBER}
                     *Environnement:* ${env.DEPLOY_ENV ?: 'Multiple'}
                     *Durée totale:* ${currentBuild.durationString.replace(' and counting', '')}
@@ -379,7 +412,7 @@ pipeline {
                 color: 'warning',
                 message: """
                     ⚠️ *Pipeline CD instable* - ${env.JOB_NAME}
-                    *Branche:* ${env.BRANCH_NAME}
+                    *Branche:* ${env.GIT_BRANCH ?: env.DETECTED_BRANCH ?: 'unknown'}
                     *Build:* #${env.BUILD_NUMBER}
                     *Durée:* ${currentBuild.durationString.replace(' and counting', '')}
                     *Lien:* ${env.BUILD_URL}
