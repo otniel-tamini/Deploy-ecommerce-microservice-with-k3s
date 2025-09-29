@@ -671,7 +671,7 @@ def sendNotification(Map params) {
     // Delegate to Slack for now, can be extended for other services
     sendSlackNotification(params)
 }
-}
+
 
 // Helper function to send notifications (deprecated - using slackSend directly now)
 // Kept for backward compatibility if needed for other notification types
